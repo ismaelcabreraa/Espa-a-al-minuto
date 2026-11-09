@@ -159,8 +159,19 @@ def recoger(cfg, fixture=None):
 
 # ---------- Plantillas ----------
 
+def adsense(cfg):
+    """Devuelve el ID de AdSense (ca-pub-...) si está configurado y es válido."""
+    pub = (cfg.get("publicidad") or {}).get("adsense_cliente", "").strip()
+    return pub if re.fullmatch(r"ca-pub-\d{10,20}", pub) else ""
+
+
 def maqueta(cfg, titulo_pag, descripcion, ruta, cuerpo, actual=""):
     s = cfg["sitio"]
+    pub = adsense(cfg)
+    script_ads = (f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={pub}" crossorigin="anonymous"></script>'
+                  if pub else "")
+    nota_pie = ('<button type="button" class="enlace-cookies" id="config-cookies">Configurar cookies</button>'
+                if pub else '<p class="nota">Esta web no usa cookies ni rastreadores.</p>')
     base = s["url"].rstrip("/")
     canonica = f"{base}/{ruta}" if ruta else f"{base}/"
     titulo_completo = s["nombre"] if not titulo_pag else f"{titulo_pag} · {s['nombre']}"
@@ -192,6 +203,7 @@ def maqueta(cfg, titulo_pag, descripcion, ruta, cuerpo, actual=""):
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="estilos.css">
 {jsonld}
+{script_ads}
 </head>
 <body>
 <a class="saltar" href="#contenido">Saltar al contenido</a>
@@ -208,7 +220,7 @@ def maqueta(cfg, titulo_pag, descripcion, ruta, cuerpo, actual=""):
   <div class="pie-in">
     <p><strong>{e(s['nombre'])}</strong> recopila titulares publicados por otros medios y enlaza a la noticia original. Los titulares y contenidos pertenecen a sus respectivos medios.</p>
     <nav aria-label="Legal">{nav("aviso-legal.html", "Aviso legal", "aviso")}{nav("privacidad.html", "Política de privacidad", "privacidad")}{nav("cookies.html", "Política de cookies", "cookies")}{nav("aviso-legal.html#retirada", "Retirada de contenidos", "-")}</nav>
-    <p class="nota">Esta web no usa cookies ni rastreadores.</p>
+    {nota_pie}
   </div>
 </footer>
 </body>
@@ -267,6 +279,9 @@ def pagina_inicio(cfg, noticias, generado):
 
 
 def pagina_legal(cfg, archivo, titulo, descripcion, ruta, actual):
+    con_ads = RAIZ / "plantillas" / archivo.replace(".html", "-publicidad.html")
+    if adsense(cfg) and con_ads.exists():
+        archivo = con_ads.name
     plantilla = (RAIZ / "plantillas" / archivo).read_text(encoding="utf-8")
     valores = {
         "SITIO": cfg["sitio"]["nombre"], "URL": cfg["sitio"]["url"].rstrip("/"),
@@ -312,7 +327,8 @@ def main():
         "privacidad.html": pagina_legal(cfg, "privacidad.html", "Política de privacidad",
             "Qué datos personales se tratan en esta web, para qué y cómo ejercer tus derechos.", "privacidad.html", "privacidad"),
         "cookies.html": pagina_legal(cfg, "cookies.html", "Política de cookies",
-            "Esta web no utiliza cookies ni tecnologías de seguimiento.", "cookies.html", "cookies"),
+            "Qué cookies utiliza esta web y cómo aceptarlas, rechazarlas o cambiar tu elección." if adsense(cfg)
+            else "Esta web no utiliza cookies ni tecnologías de seguimiento.", "cookies.html", "cookies"),
     }
     for nombre, contenido in paginas.items():
         (SALIDA / nombre).write_text(contenido, encoding="utf-8")
@@ -329,6 +345,11 @@ def main():
     (SALIDA / "sitemap.xml").write_text("\n".join(sm) + "\n", encoding="utf-8")
     (SALIDA / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n", encoding="utf-8")
     (SALIDA / ".nojekyll").write_text("", encoding="utf-8")
+    pub = adsense(cfg)
+    if pub:
+        (SALIDA / "ads.txt").write_text(f"google.com, {pub.replace('ca-', '')}, DIRECT, f08c47fec0942fa0\n", encoding="utf-8")
+    elif (cfg.get("publicidad") or {}).get("adsense_cliente"):
+        print("AVISO: el ID de AdSense de config.json no tiene el formato ca-pub-XXXXXXXXXXXXXXXX; no se añade publicidad.")
 
     print(f"Generado {SALIDA} con {len(noticias)} titulares:")
     print("\n".join(informe))
